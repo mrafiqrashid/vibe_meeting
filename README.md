@@ -28,8 +28,8 @@ Vibe Meeting is a modern web application that allows you to record audio, transc
 
 ## API Endpoints
 
-- **Transcription:** `https://n8n.adamshahrom.com.my/webhook/audio-to-transcribe`
-- **Summarization:** `https://n8n.adamshahrom.com.my/webhook/summarize-text`
+- **Transcription:** `https://----------------------`
+- **Summarization:** `https://----------------------`
 
 > **Note:** These endpoints are used for demo purposes. You may need to replace them with your own services for production use.
 
