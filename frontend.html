@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vibe Meeting - Audio Transcriber</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      body {
+        font-family: "Inter", sans-serif;
+        background: linear-gradient(135deg, #3b82f6 0%, #1e40af 100%);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
+        margin: 0;
+        position: relative;
+      }
+
+      body::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: url('data:image/svg+xml,<svg width="60" height="60" viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg"><g fill="none" fill-rule="evenodd"><g fill="%23ffffff" fill-opacity="0.05"><circle cx="30" cy="30" r="1"/></g></svg>')
+          repeat;
+        pointer-events: none;
+      }
+      .container {
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(20px);
+        border-radius: 1.5rem;
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1),
+          0 10px 10px -5px rgba(0, 0, 0, 0.04),
+          0 0 0 1px rgba(255, 255, 255, 0.1);
+        padding: 3rem;
+        width: 100%;
+        max-width: 32rem;
+        position: relative;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+      }
+
+      .app-title {
+        font-size: 2.5rem;
+        font-weight: 800;
+        background: linear-gradient(135deg, #3b82f6 0%, #1e40af 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        text-align: center;
+        margin-bottom: 0.5rem;
+        letter-spacing: -0.02em;
+      }
+
+      .app-subtitle {
+        color: #64748b;
+        text-align: center;
+        font-size: 1.1rem;
+        font-weight: 400;
+        margin-bottom: 2.5rem;
+        letter-spacing: 0.01em;
+      }
+
+      .section-title {
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: #1e293b;
+        text-align: center;
+        margin-bottom: 2rem;
+        letter-spacing: -0.01em;
+      }
+      .loading-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(8px);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        border-radius: 1.5rem;
+        z-index: 10;
+        opacity: 0;
+        visibility: hidden;
+        transition: opacity 0.3s ease, visibility 0.3s ease;
+      }
+      .loading-overlay.visible {
+        opacity: 1;
+        visibility: visible;
+      }
+      .spinner {
+        border: 4px solid rgba(59, 130, 246, 0.1);
+        border-left-color: #3b82f6;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        animation: spin 1s linear infinite;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      .record-button {
+        background: linear-gradient(135deg, #3b82f6 0%, #1e40af 100%);
+        border: none;
+        color: white;
+        font-weight: 600;
+        padding: 1rem 2rem;
+        border-radius: 9999px;
+        font-size: 1.125rem;
+        transition: all 0.3s ease;
+        box-shadow: 0 10px 15px -3px rgba(59, 130, 246, 0.3);
+        position: relative;
+        overflow: hidden;
+      }
+
+      .record-button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 15px 25px -3px rgba(59, 130, 246, 0.4);
+      }
+
+      .record-button.recording {
+        background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+        box-shadow: 0 10px 15px -3px rgba(239, 68, 68, 0.3);
+      }
+
+      .record-button.recording:hover {
+        box-shadow: 0 15px 25px -3px rgba(239, 68, 68, 0.4);
+      }
+
+      .status-text {
+        color: #64748b;
+        font-size: 0.95rem;
+        font-weight: 500;
+      }
+
+      .timer-display {
+        font-size: 1.75rem;
+        font-weight: 700;
+        color: #1e293b;
+        font-family: "SF Mono", "Monaco", "Cascadia Code", "Roboto Mono",
+          monospace;
+        letter-spacing: 0.05em;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <!-- App Title and Branding -->
+      <div class="mb-8">
+        <h1 class="app-title">Vibe Meeting</h1>
+        <p class="app-subtitle">Transform your conversations into insights</p>
+      </div>
+
+      <!-- Audio Recording Section -->
+      <div id="audio-section" class="space-y-6">
+        <h2 class="section-title">Record Your Audio</h2>
+        <div class="flex flex-col items-center space-y-4">
+          <button id="record-btn" class="record-button">Start Recording</button>
+          <p id="recording-status" class="status-text">
+            Press to start recording
+          </p>
+          <p id="timer" class="timer-display">00:00</p>
+        </div>
+
+        <!-- Audio Playback -->
+        <div
+          id="audio-playback-container"
+          class="hidden flex flex-col items-center mt-4"
+        >
+          <audio id="audio-player" controls class="w-full"></audio>
+          <div class="flex space-x-4 mt-4">
+            <button
+              id="re-record-btn"
+              class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-2 px-4 rounded-md transition-colors"
+            >
+              Re-record
+            </button>
+            <button
+              id="submit-audio-btn"
+              class="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-md transition-colors"
+            >
+              Transcribe
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Transcript Display Section -->
+      <div id="transcript-section" class="hidden mt-6 space-y-4">
+        <label
+          for="transcript-input"
+          class="block text-gray-700 font-semibold mb-1"
+          >Your Transcript</label
+        >
+        <textarea
+          id="transcript-input"
+          rows="6"
+          class="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-y"
+        ></textarea>
+        <div class="flex space-x-3">
+          <button
+            id="summarize-btn"
+            class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md transition-colors"
+          >
+            Summarize Text
+          </button>
+          <button
+            id="transcribe-another-btn"
+            class="flex-1 bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-md transition-colors"
+          >
+            Transcribe Another
+          </button>
+        </div>
+      </div>
+
+      <!-- Summary Display Section -->
+      <div id="summary-section" class="hidden mt-6 space-y-4">
+        <div class="border-t pt-4">
+          <h3 class="text-lg font-bold text-gray-800 mb-3">Summary</h3>
+          <div id="summary-content" class="bg-gray-50 p-4 rounded-lg">
+            <!-- Summary content will be inserted here -->
+          </div>
+          <div class="flex space-x-3 mt-4">
+            <button
+              id="download-pdf-btn"
+              class="flex-1 bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-md transition-colors"
+            >
+              Download as PDF
+            </button>
+            <button
+              id="back-to-transcript-btn"
+              class="flex-1 bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-md transition-colors"
+            >
+              Back to Transcript
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Loading Overlay -->
+      <div id="loading-overlay" class="loading-overlay">
+        <div class="spinner"></div>
+        <p id="loading-text" class="mt-4 text-gray-700">Processing...</p>
+      </div>
+    </div>
+
+    <script>
+      const recordBtn = document.getElementById("record-btn");
+      const recordingStatus = document.getElementById("recording-status");
+      const timerEl = document.getElementById("timer");
+      const audioPlaybackContainer = document.getElementById(
+        "audio-playback-container"
+      );
+      const audioPlayer = document.getElementById("audio-player");
+      const reRecordBtn = document.getElementById("re-record-btn");
+      const submitAudioBtn = document.getElementById("submit-audio-btn");
+      const transcriptSection = document.getElementById("transcript-section");
+      const transcriptInput = document.getElementById("transcript-input");
+      const transcribeAnotherBtn = document.getElementById(
+        "transcribe-another-btn"
+      );
+      const summarizeBtn = document.getElementById("summarize-btn");
+      const summarySection = document.getElementById("summary-section");
+      const summaryContent = document.getElementById("summary-content");
+      const downloadPdfBtn = document.getElementById("download-pdf-btn");
+      const backToTranscriptBtn = document.getElementById(
+        "back-to-transcript-btn"
+      );
+      const loadingOverlay = document.getElementById("loading-overlay");
+      const loadingText = document.getElementById("loading-text");
+
+      let mediaRecorder;
+      let audioChunks = [];
+      let recordedAudioBlob = null;
+      let timerInterval;
+      let seconds = 0;
+      let isRecording = false;
+
+      const WEBHOOK_URL =
+        "https://n8n.adamshahrom.com.my/webhook/audio-to-transcribe";
+      const SUMMARY_URL =
+        "https://n8n.adamshahrom.com.my/webhook/summarize-text";
+
+      let currentSummaryData = null; // Store summary data for PDF generation
+
+      // --- Section Management ---
+      const sections = {
+        "audio-section": document.getElementById("audio-section"),
+        "transcript-section": document.getElementById("transcript-section"),
+        "summary-section": document.getElementById("summary-section"),
+      };
+
+      const showSection = (sectionId) => {
+        for (const id in sections) {
+          if (sections.hasOwnProperty(id)) {
+            if (id === sectionId) {
+              sections[id].classList.remove("hidden");
+            } else {
+              sections[id].classList.add("hidden");
+            }
+          }
+        }
+      };
+
+      // --- Utility Functions ---
+      const formatTime = (time) => {
+        const minutes = Math.floor(time / 60)
+          .toString()
+          .padStart(2, "0");
+        const seconds = Math.floor(time % 60)
+          .toString()
+          .padStart(2, "0");
+        return `${minutes}:${seconds}`;
+      };
+
+      const showLoading = (message) => {
+        loadingText.textContent = message;
+        loadingOverlay.classList.add("visible");
+      };
+
+      const hideLoading = () => {
+        loadingOverlay.classList.remove("visible");
+      };
+
+      const updateTimer = () => {
+        seconds++;
+        timerEl.textContent = formatTime(seconds);
+      };
+
+      const resetRecordingState = () => {
+        isRecording = false;
+        clearInterval(timerInterval);
+        seconds = 0;
+        timerEl.textContent = "00:00";
+        recordBtn.textContent = "Start Recording";
+        recordBtn.classList.remove("recording");
+        recordingStatus.textContent = "Press to start recording";
+        audioPlaybackContainer.classList.add("hidden");
+        recordBtn.style.display = "block";
+        transcriptInput.value = "";
+      };
+
+      // --- Event Handlers ---
+      recordBtn.addEventListener("click", async () => {
+        if (isRecording) {
+          mediaRecorder.stop();
+        } else if (recordBtn.textContent === "Record New Audio") {
+          resetRecordingState();
+          showSection("audio-section");
+        } else {
+          try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+              audio: true,
+            });
+            mediaRecorder = new MediaRecorder(stream, {
+              mimeType: "audio/webm",
+            });
+            audioChunks = [];
+
+            mediaRecorder.ondataavailable = (event) => {
+              audioChunks.push(event.data);
+            };
+
+            mediaRecorder.onstop = () => {
+              recordedAudioBlob = new Blob(audioChunks, { type: "audio/webm" });
+              const audioURL = URL.createObjectURL(recordedAudioBlob);
+              audioPlayer.src = audioURL;
+              stream.getTracks().forEach((track) => track.stop());
+
+              recordBtn.style.display = "none";
+              recordingStatus.textContent = "Recording finished.";
+              audioPlaybackContainer.classList.remove("hidden");
+              clearInterval(timerInterval);
+            };
+
+            mediaRecorder.start();
+            isRecording = true;
+            recordBtn.textContent = "Stop Recording";
+            recordBtn.classList.add("recording");
+            recordingStatus.textContent = "Recording in progress...";
+            seconds = 0;
+            timerEl.textContent = "00:00";
+            timerInterval = setInterval(updateTimer, 1000);
+          } catch (error) {
+            console.error("Error accessing microphone:", error);
+            alert("Could not access microphone. Please allow access."); // Using alert for simplicity as per previous instructions
+            recordingStatus.textContent = "Error: Microphone access denied.";
+          }
+        }
+      });
+
+      reRecordBtn.addEventListener("click", () => {
+        resetRecordingState();
+        showSection("audio-section");
+      });
+
+      submitAudioBtn.addEventListener("click", async () => {
+        if (!recordedAudioBlob) {
+          alert("Please record audio first.");
+          return;
+        }
+
+        showLoading("Transcribing audio...");
+
+        const formData = new FormData();
+        formData.append("audio_file", recordedAudioBlob, "audio.webm");
+
+        try {
+          const response = await fetch(WEBHOOK_URL, {
+            method: "POST",
+            body: formData,
+          });
+
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+
+          const result = await response.json();
+          console.log("Webhook response:", result);
+
+          transcriptInput.value =
+            result.Transcript || "No transcript received.";
+          showSection("transcript-section");
+
+          audioPlaybackContainer.classList.add("hidden");
+
+          recordBtn.style.display = "block";
+          recordBtn.textContent = "Record New Audio";
+          recordBtn.classList.remove("recording");
+          recordingStatus.textContent = "Audio transcribed successfully!";
+          timerEl.textContent = "00:00";
+        } catch (error) {
+          console.error("Error sending audio to webhook:", error);
+          alert(`Failed to transcribe audio: ${error.message}`);
+          resetRecordingState();
+          showSection("audio-section");
+        } finally {
+          hideLoading();
+        }
+      });
+
+      // Event listener for the "Transcribe Another Audio" button
+      transcribeAnotherBtn.addEventListener("click", () => {
+        resetRecordingState();
+        showSection("audio-section");
+      });
+
+      // Event listener for the "Summarize Text" button
+      summarizeBtn.addEventListener("click", async () => {
+        const transcript = transcriptInput.value.trim();
+
+        if (!transcript) {
+          alert("No transcript available to summarize.");
+          return;
+        }
+
+        showLoading("Generating summary...");
+
+        try {
+          const response = await fetch(SUMMARY_URL, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ text: transcript }),
+          });
+
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+
+          const result = await response.json();
+          console.log("Summary response:", result);
+
+          // Store summary data for PDF generation
+          currentSummaryData = result;
+
+          // Display the summary
+          displaySummary(result);
+          showSection("summary-section");
+        } catch (error) {
+          console.error("Error generating summary:", error);
+          alert(`Failed to generate summary: ${error.message}`);
+        } finally {
+          hideLoading();
+        }
+      });
+
+      // Function to display formatted summary
+      const displaySummary = (summaryData) => {
+        let htmlContent = "";
+
+        if (summaryData.title) {
+          htmlContent += `<h2 class="text-xl font-bold mb-3">${summaryData.title}</h2>`;
+        }
+
+        if (summaryData.keyPoints && summaryData.keyPoints.length > 0) {
+          htmlContent += '<div class="mb-4">';
+          htmlContent += '<h3 class="font-semibold mb-2">Key Points:</h3>';
+          htmlContent += '<ul class="list-disc list-inside space-y-2">';
+          summaryData.keyPoints.forEach((point) => {
+            htmlContent += `<li class="text-gray-700">${point}</li>`;
+          });
+          htmlContent += "</ul>";
+          htmlContent += "</div>";
+        }
+
+        if (summaryData.conclusion) {
+          htmlContent += '<div class="mt-4 pt-4 border-t">';
+          htmlContent += '<h3 class="font-semibold mb-2">Conclusion:</h3>';
+          htmlContent += `<p class="text-gray-700">${summaryData.conclusion}</p>`;
+          htmlContent += "</div>";
+        }
+
+        summaryContent.innerHTML = htmlContent;
+      };
+
+      // Event listener for "Download PDF" button
+      downloadPdfBtn.addEventListener("click", () => {
+        if (!currentSummaryData) {
+          alert("No summary available to download.");
+          return;
+        }
+
+        generatePDF(currentSummaryData);
+      });
+
+      // Function to generate and download PDF
+      const generatePDF = (summaryData) => {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+
+        let yPosition = 20;
+        const lineHeight = 7;
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const margin = 20;
+        const maxWidth = pageWidth - 2 * margin;
+
+        // Add title
+        doc.setFontSize(18);
+        doc.setFont(undefined, "bold");
+        if (summaryData.title) {
+          const titleLines = doc.splitTextToSize(summaryData.title, maxWidth);
+          doc.text(titleLines, margin, yPosition);
+          yPosition += titleLines.length * 8 + 10;
+        } else {
+          doc.text("Audio Transcript Summary", margin, yPosition);
+          yPosition += 18;
+        }
+
+        // Add timestamp
+        doc.setFontSize(10);
+        doc.setFont(undefined, "normal");
+        doc.setTextColor(100);
+        const timestamp = new Date().toLocaleString();
+        doc.text(`Generated: ${timestamp}`, margin, yPosition);
+        yPosition += 15;
+        doc.setTextColor(0);
+
+        // Add key points
+        if (summaryData.keyPoints && summaryData.keyPoints.length > 0) {
+          doc.setFontSize(14);
+          doc.setFont(undefined, "bold");
+          doc.text("Key Points:", margin, yPosition);
+          yPosition += 10;
+
+          doc.setFontSize(11);
+          doc.setFont(undefined, "normal");
+          summaryData.keyPoints.forEach((point, index) => {
+            const bullet = `• `;
+            const pointText = doc.splitTextToSize(point, maxWidth - 10);
+
+            // Check if we need a new page
+            if (
+              yPosition + pointText.length * lineHeight >
+              doc.internal.pageSize.getHeight() - 20
+            ) {
+              doc.addPage();
+              yPosition = 20;
+            }
+
+            doc.text(bullet, margin, yPosition);
+            doc.text(pointText, margin + 5, yPosition);
+            yPosition += pointText.length * lineHeight + 3;
+          });
+          yPosition += 10;
+        }
+
+        // Add conclusion
+        if (summaryData.conclusion) {
+          // Check if we need a new page
+          if (yPosition + 30 > doc.internal.pageSize.getHeight() - 20) {
+            doc.addPage();
+            yPosition = 20;
+          }
+
+          doc.setFontSize(14);
+          doc.setFont(undefined, "bold");
+          doc.text("Conclusion:", margin, yPosition);
+          yPosition += 10;
+
+          doc.setFontSize(11);
+          doc.setFont(undefined, "normal");
+          const conclusionLines = doc.splitTextToSize(
+            summaryData.conclusion,
+            maxWidth
+          );
+
+          // Check if conclusion fits on current page
+          if (
+            yPosition + conclusionLines.length * lineHeight >
+            doc.internal.pageSize.getHeight() - 20
+          ) {
+            doc.addPage();
+            yPosition = 20;
+          }
+
+          doc.text(conclusionLines, margin, yPosition);
+        }
+
+        // Save the PDF
+        const filename = `transcript-summary-${Date.now()}.pdf`;
+        doc.save(filename);
+      };
+
+      // Event listener for "Back to Transcript" button
+      backToTranscriptBtn.addEventListener("click", () => {
+        showSection("transcript-section");
+      });
+
+      // Initial setup when the page loads
+      document.addEventListener("DOMContentLoaded", () => {
+        showSection("audio-section");
+        resetRecordingState();
+      });
+    </script>
+  </body>
+</html>
